@@ -1,7 +1,7 @@
 /**
  *
  * @file interrupts.cpp
- * @author Sasisekhar Govind
+ * @author Faris Hassan
  *
  */
 
@@ -51,7 +51,28 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             ///////////////////////////////////////////////////////////////////////////////////////////
             //Add your FORK output here
 
+            // simulate ISR for FORK
+            execution += std::to_string(current_time) + ", " + std::to_string(duration_intr) + ", cloning the PCB\n";
+            current_time += duration_intr; 
 
+            // create child PCB
+            PCB child(current.PID + 1, current.PID, current.program_name, current.size, -1);
+
+            if(!allocate_memory(&child)) {
+                std::cerr << "error, Memory allocation for child failed" << std::endl;
+            }
+
+            wait_queue.push_back(current); // parent goes to waiting
+            current = child; // child becomes running
+
+            // log scheduler call and return
+            execution += std::to_string(current_time) + ", 0, scheduler called\n";
+            execution += std::to_string(current_time) + ", 1, IRET\n";
+            current_time += 1;
+
+            // take snapshot of system state after FORK
+            system_status += "time: " + std::to_string(current_time) + "; current trace: FORK, " + std::to_string(duration_intr) + "\n";
+            system_status += print_PCB(current, wait_queue) + "\n";
 
             ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -92,7 +113,28 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             ///////////////////////////////////////////////////////////////////////////////////////////
             //With the child's trace, run the child (HINT: think recursion)
 
+            // recursively simulate childs execuition
+            // allows child process to run fully before parent process resumes
+            auto [child_exec, child_sys, child_time] = simulate_trace(
+                child_trace,            // the child's portion of the trace
+                current_time,           // current simulation time continues
+                vectors,                // same vector table
+                delays,                 // same device delays
+                external_files,         // same external file list
+                current,                // current = child process PCB
+                wait_queue              // parent is in wait queue
+            );
 
+            // append results of the child run to current log buffers
+            execution += child_exec;
+            system_status += child_sys;
+
+            // update simulation time after child finishes
+            current_time = child_time;
+
+            // when child finishes, restore parent context, (remove from wait queue)
+            current = wait_queue.back(); // retrieve parent
+            wait_queue.pop_back(); // parent resumes running
 
             ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -156,6 +198,7 @@ int main(int argc, char** argv) {
     std::vector<PCB> wait_queue;
 
     /******************ADD YOUR VARIABLES HERE*************************/
+
 
 
     /******************************************************************/
