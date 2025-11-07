@@ -32,5 +32,5 @@
 622, 10, context saved
 632, 1, find vector 4 in memory position 0x0008
 633, 1, load address 0X0292 into the PC
-634, 250, SYSCALL ISR (ADD STEPS HERE)
+634, 250, SYSCALL ISR 
 884, 1, IRET

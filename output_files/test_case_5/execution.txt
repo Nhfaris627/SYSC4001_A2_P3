@@ -1,0 +1,14 @@
+0, 50, CPU Burst
+50, 1, switch to kernel mode
+51, 10, context saved
+61, 1, find vector 3 in memory position 0x0006
+62, 1, load address 0X042B into the PC
+63, 300, SYSCALL ISR (ADD STEPS HERE)
+363, 1, IRET
+364, 30, CPU Burst
+394, 1, switch to kernel mode
+395, 10, context saved
+405, 1, find vector 5 in memory position 0x000A
+406, 1, load address 0X048B into the PC
+407, 211, ENDIO ISR(ADD STEPS HERE)
+618, 1, IRET

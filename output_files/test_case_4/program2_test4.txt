@@ -1,0 +1,3 @@
+PU, 25
+SYSCALL, 3
+CPU, 20
