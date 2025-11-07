@@ -5,14 +5,16 @@
  *
  */
 
-#include<interrupts.hpp>
+#include "interrupts.hpp"
 
 std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string> trace_file, int time, std::vector<std::string> vectors, std::vector<int> delays, std::vector<external_file> external_files, PCB current, std::vector<PCB> wait_queue) {
 
+    
     std::string trace;      //!< string to store single line of trace file
     std::string execution = "";  //!< string to accumulate the execution output
     std::string system_status = "";  //!< string to accumulate the system status output
     int current_time = time;
+    
 
     //parse each line of the input trace file. 'for' loop to keep track of indices.
     for(size_t i = 0; i < trace_file.size(); i++) {
@@ -63,7 +65,6 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             }
 
             wait_queue.push_back(current); // parent goes to waiting
-            current = child; // child becomes running
 
             // log scheduler call and return
             execution += std::to_string(current_time) + ", 0, scheduler called\n";
@@ -72,7 +73,7 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
 
             // take snapshot of system state after FORK
             system_status += "time: " + std::to_string(current_time) + "; current trace: FORK, " + std::to_string(duration_intr) + "\n";
-            system_status += print_PCB(current, wait_queue) + "\n";
+            system_status += print_PCB(child, wait_queue) + "\n";
 
             ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -121,16 +122,19 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
                 vectors,                // same vector table
                 delays,                 // same device delays
                 external_files,         // same external file list
-                current,                // current = child process PCB
+                child,                  //child process PCB
                 wait_queue              // parent is in wait queue
             );
 
             // append results of the child run to current log buffers
             execution += child_exec;
             system_status += child_sys;
-
-            // update simulation time after child finishes
             current_time = child_time;
+
+            // call scheduler and IRET (after child completes)
+            execution += std::to_string(current_time) + ", 0, scheduler called\n";
+            execution += std::to_string(current_time) + ", 1, IRET\n";
+            current_time += 1;
 
             // when child finishes, restore parent context, (remove from wait queue)
             current = wait_queue.back(); // retrieve parent
@@ -147,7 +151,56 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             ///////////////////////////////////////////////////////////////////////////////////////////
             //Add your EXEC output here
 
+            // simulate the ISR setup for EXEC 
+            // find the program in external_files and get the size
+            unsigned int program_size = get_size(program_name, external_files);
+            if (program_size == (unsigned int)-1) {
+                std::cerr << "error, program " << program_name << " not found in external files.\n";
+                exit(1);
+            }
 
+            free_memory(&current); // free old memory first
+
+            // find a free partition that fits
+            PCB new_process(current.PID, current.PPID, program_name, program_size, -1);
+            if (!allocate_memory(&new_process)) {
+                std::cerr << "error, no available partition for program " << program_name << ".\n";
+                exit(1);
+            }
+
+            // simulate loading time (15ms per MB)
+            unsigned int load_time = program_size * 15;
+
+            // log loading process
+            execution += std::to_string(current_time) + ", " + std::to_string(duration_intr) +
+                        ", Program is " + std::to_string(program_size) + " Mb large\n";
+            current_time += duration_intr;
+
+            execution += std::to_string(current_time) + ", " + std::to_string(load_time) +
+                        ", loading program into memory\n";
+            current_time += load_time;
+
+            // mark partition as occupied 
+            execution += std::to_string(current_time) + ", 3, marking partition as occupied\n";
+            current_time += 3;
+
+            // update PCB with new program info
+            execution += std::to_string(current_time) + ", 6, updating PCB\n";
+            current_time += 6;
+
+            // update the new process
+            current = new_process;
+
+            // scheduler call and IRET
+            execution += std::to_string(current_time) + ", 0, scheduler called\n";
+            execution += std::to_string(current_time) + ", 1, IRET\n";
+            current_time += 1;
+        
+            // system snapshot
+            system_status += "time: " + std::to_string(current_time) +
+                            "; current trace: EXEC " + program_name + ", " +
+                            std::to_string(duration_intr) + "\n";
+            system_status += print_PCB(current, wait_queue) + "\n";
 
             ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -163,12 +216,25 @@ std::tuple<std::string, std::string, int> simulate_trace(std::vector<std::string
             ///////////////////////////////////////////////////////////////////////////////////////////
             //With the exec's trace (i.e. trace of external program), run the exec (HINT: think recursion)
 
+            // recursively simulate execution of the external program
+            auto [exec_out, exec_sys, exec_time] = simulate_trace(
+                exec_traces,           // lines from program_name.txt
+                current_time,          // continue current time
+                vectors,               // same vector table
+                delays,                // same delays
+                external_files,        // same external files
+                current,               // now running the new program
+                wait_queue             // same wait queue
+            );
 
+            // append results
+            execution += exec_out;
+            system_status += exec_sys;
+            current_time = exec_time;
 
             ///////////////////////////////////////////////////////////////////////////////////////////
 
             break; //Why is this important? (answer in report)
-
         }
     }
 
@@ -198,7 +264,6 @@ int main(int argc, char** argv) {
     std::vector<PCB> wait_queue;
 
     /******************ADD YOUR VARIABLES HERE*************************/
-
 
 
     /******************************************************************/
